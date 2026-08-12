@@ -1,0 +1,65 @@
+{
+  "name": "syncmesh",
+  "version": "0.1.0",
+  "description": "Real-time GunDB sync + tiered storage: Cloudflare R2 for cold blobs, and your choice of D1 / MongoDB / MySQL / PostgreSQL for the metadata index. Built for chat apps that can't afford unbounded RAM growth.",
+  "main": "src/index.js",
+  "exports": {
+    ".": "./src/index.js",
+    "./express": "./src/expressRouter.js",
+    "./adapters/base": "./src/db/BaseAdapter.js",
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "syncmesh-relay": "./bin/syncmesh-relay.js",
+    "syncmesh-init-d1-proxy": "./bin/syncmesh-init-d1-proxy.js"
+  },
+  "files": [
+    "src",
+    "bin",
+    "templates",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "relay": "node bin/syncmesh-relay.js"
+  },
+  "keywords": [
+    "gundb",
+    "gun",
+    "realtime",
+    "chat",
+    "sync",
+    "cloudflare-r2",
+    "cloudflare-d1",
+    "mongodb",
+    "mysql",
+    "postgresql",
+    "tiered-storage",
+    "cold-storage",
+    "database-adapter"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OminduDissanayaka/syncmesh.git"
+  },
+  "homepage": "https://github.com/OminduDissanayaka/syncmesh#readme",
+  "bugs": {
+    "url": "https://github.com/OminduDissanayaka/syncmesh/issues"
+  },
+  "author": "Omindu Dissanayaka (https://github.com/OminduDissanayaka)",
+  "license": "MIT",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "^3.637.0",
+    "@aws-sdk/s3-request-presigner": "^3.637.0",
+    "express": "^4.19.2",
+    "gun": "^0.2020.1239"
+  },
+  "optionalDependencies": {
+    "mongodb": "^6.8.0",
+    "mysql2": "^3.11.0",
+    "pg": "^8.12.0"
+  }
+}

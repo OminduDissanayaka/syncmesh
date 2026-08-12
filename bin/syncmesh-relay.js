@@ -4,16 +4,18 @@
  *
  * Architect: Omindu Dissanayaka (https://github.com/OminduDissanayaka)
  *
- * A pure real-time relay: holds messages in memory and signals updates
- * between connected peers. Never persists to disk, never talks to R2 or
- * your metadata DB directly — SyncMesh's archiver (running inside your
- * own app, as a Gun *client* pointed at this relay) handles archiving.
+ * Uses GunDB's own canonical relay pattern — a raw http server with
+ * Gun.serve() as the request handler, then Gun({web: server}) attached on
+ * top. No Express dependency: a pure relay only needs to speak Gun's own
+ * protocol plus a tiny health-check endpoint, so there's no reason to
+ * carry a web framework here.
+ *
+ * A relay never persists to disk and never talks to R2 or your metadata
+ * DB directly — SyncMesh's archiver (running inside your own app, as a
+ * Gun *client* pointed at this relay) handles archiving.
  *
  * Run directly:
  *   npx syncmesh-relay
- *
- * Or add to your own package.json:
- *   "scripts": { "relay": "syncmesh-relay" }
  *
  * Env vars:
  *   PORT — defaults to 8081
@@ -21,20 +23,29 @@
 
 'use strict';
 
-const express = require('express');
+const http = require('http');
 const Gun = require('gun');
 
-const app = express();
 const PORT = process.env.PORT || 8081;
+const gunHandler = Gun.serve(__dirname);
 
-app.get('/ping', (_req, res) => {
-  res.status(200).send('Pong! SyncMesh relay is awake.');
-});
+/**
+ * Wraps Gun's own request handler with a lightweight /ping route, so an
+ * external uptime pinger (cron-job.org etc.) can keep a free/hobby dyno
+ * awake without needing any extra framework.
+ * @param {import('http').IncomingMessage} req
+ * @param {import('http').ServerResponse} res
+ */
+function requestListener(req, res) {
+  if (req.url === '/ping') {
+    res.writeHead(200, { 'Content-Type': 'text/plain' });
+    res.end('Pong! SyncMesh relay is awake.');
+    return;
+  }
+  gunHandler(req, res);
+}
 
-const server = app.listen(PORT, () => {
-  console.log(`[${new Date().toISOString()}] SyncMesh relay listening on port=${PORT}`);
-  console.log(`Gun endpoint: http://localhost:${PORT}/gun`);
-});
+const server = http.createServer(requestListener);
 
 // radisk: false / multicast: false keep this a thin RAM-only signalling
 // layer that fits comfortably on small dynos/instances.
@@ -46,7 +57,15 @@ Gun({
   axe: false,
 });
 
-process.on('SIGTERM', () => {
-  console.log('SIGTERM received, closing relay gracefully.');
-  server.close(() => process.exit(0));
+server.listen(PORT, () => {
+  const ts = new Date().toISOString();
+  process.stdout.write(`[${ts}] SyncMesh relay started | port=${PORT} | gun endpoint: /gun\n`);
 });
+
+server.on('error', (err) => {
+  process.stderr.write(`Server error: ${err.message}\n`);
+  process.exit(1);
+});
+
+process.on('SIGTERM', () => server.close(() => process.exit(0)));
+process.on('SIGINT', () => server.close(() => process.exit(0)));

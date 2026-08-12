@@ -69,7 +69,7 @@ const mesh = new SyncMesh({
 await mesh.init();
 ```
 
-1. **Spin up a relay** (in production, deploy this as its own always-on service):
+1. **Spin up a relay** (in production, deploy this as its own always-on service — it's a raw `http` server using Gun's own canonical relay pattern, no Express involved):
    ```bash
    npx syncmesh-relay
    # GunDB endpoint: http://localhost:8081/gun
@@ -126,6 +126,10 @@ parts → `PUT` each part directly to its presigned URL from the browser →
 `completeUpload` with the returned `ETag`s.
 
 ## Express integration (optional)
+
+Only `syncmesh/express` and the example app need Express — the core
+library and `syncmesh-relay` don't depend on it at all, so
+`npm install express` only if you actually use this helper.
 
 ```js
 const { createExpressRouter } = require('syncmesh/express');

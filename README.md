@@ -6,8 +6,8 @@ SyncMesh keeps a bounded, real-time "hot" window of events in
 [GunDB](https://gun.eco), archives everything older to
 [Cloudflare R2](https://developers.cloudflare.com/r2/) as write-once JSON,
 and indexes those archives in a metadata database of your choice —
-**D1, MongoDB, MySQL, or PostgreSQL** — so your GunDB relay never runs out
-of RAM no matter how much history accumulates. It also gives you
+**D1, MongoDB, MySQL, or PostgreSQL** — so the active GunDB event footprint 
+stays bounded as history accumulates. It also gives you
 presigned, direct-to-R2 multipart file uploads out of the box.
 
 Chat is the flagship use case, but "room" in SyncMesh just means *any
@@ -55,7 +55,7 @@ notification feed, a device's event stream, or an audit log.
 │  (SyncMesh)   │                   │  npx syncmesh-relay   │
 └──────┬───────┘                   └───────────────────┘
        │
-       ├──► Cloudflare R2 (file blobs + write-once chat-archive JSON chunks)
+       ├──► Cloudflare R2 (file blobs + write-once event-archive JSON chunks)
        │
        └──► Metadata DB — d1 | mongodb | mysql | postgres (your pick)
 ```

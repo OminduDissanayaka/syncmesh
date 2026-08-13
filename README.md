@@ -6,8 +6,8 @@ SyncMesh keeps a bounded, real-time "hot" window of events in
 [GunDB](https://gun.eco), archives everything older to
 [Cloudflare R2](https://developers.cloudflare.com/r2/) as write-once JSON,
 and indexes those archives in a metadata database of your choice —
-**D1, MongoDB, MySQL, or PostgreSQL** — so the active GunDB event footprint 
-stays bounded as history accumulates. It also gives you
+**D1, MongoDB, MySQL, or PostgreSQL** — so the active GunDB event
+footprint stays bounded as history accumulates. It also gives you
 presigned, direct-to-R2 multipart file uploads out of the box.
 
 Chat is the flagship use case, but "room" in SyncMesh just means *any
@@ -24,6 +24,28 @@ archived once they age out*. That covers a lot more than chat:
 - Realtime documents
 
 Architect: **Omindu Dissanayaka** — [github.com/OminduDissanayaka](https://github.com/OminduDissanayaka)
+
+> The architecture and concept for SyncMesh — the GunDB hot tier, the
+> rolling-window archiver, and the pluggable R2 + metadata-DB design —
+> is Omindu Dissanayaka's idea. The code was implemented as this
+> installable library with the help of Claude (Anthropic).
+
+## Contents
+
+- [Install](#install)
+- [Why SyncMesh exists](#why-syncmesh-exists)
+- [When to use SyncMesh](#when-to-use-syncmesh)
+- [Benefits](#benefits)
+- [Quick start](#quick-start)
+- [Data model — how to write messages](#data-model--how-to-write-messages)
+- [Examples & Recipes](#examples--recipes)
+- [Core API](#core-api)
+- [Express integration (optional)](#express-integration-optional)
+- [Choosing a metadata database](#choosing-a-metadata-database)
+- [Writing a custom adapter](#writing-a-custom-adapter)
+- [Security](#security)
+- [Known limitations](#known-limitations)
+- [License](#license)
 
 ## Install
 
@@ -59,6 +81,65 @@ notification feed, a device's event stream, or an audit log.
        │
        └──► Metadata DB — d1 | mongodb | mysql | postgres (your pick)
 ```
+
+## When to use SyncMesh
+
+Reach for SyncMesh when your app has this shape: **lots of small
+real-time events that are read constantly while recent, and rarely once
+they age.** Chat, comments, activity feeds, notifications, live
+collaboration, IoT telemetry, and audit trails all fit this pattern —
+recent history needs to feel instant, old history just needs to still
+exist somewhere cheap.
+
+**Good fit when:**
+- You need real *real-time* sync — multiple clients seeing the same live
+  stream instantly — not just a database with polling.
+- Event volume grows without bound over time (a busy chat room, a
+  reporting device, a long-lived audit log), and you don't want that
+  growth to quietly become a RAM or hosting-cost problem later.
+- You want file uploads that don't route through your own server's
+  bandwidth or memory.
+- You don't want to commit to one database vendor up front — or you
+  deploy to different infrastructure per client/environment and need
+  whichever DB is already available there.
+- You're building on a budget: a GunDB relay runs comfortably on a small
+  dyno/VPS, R2 has no egress fees, and the metadata index usually stays
+  small since the actual content lives in R2, not the database.
+
+**Not a great fit when:**
+- You need strict multi-row ACID transactions across events — Gun is an
+  eventually-consistent CRDT graph, not a relational database.
+- You need guaranteed, ordered, exactly-once delivery — Gun's sync is
+  best-effort mesh propagation. Great for chat/UI-level real-time, risky
+  for anything like financial transactions.
+- Your data will always stay small (a few thousand rows, ever) — the
+  hot/cold split adds complexity you don't need; just use a database
+  directly.
+- You need full-text search over history — SyncMesh doesn't index
+  content. Pair it with a search service if you need this.
+
+## Benefits
+
+- **Bounded RAM, not bounded history** — old events move to cheap R2
+  storage automatically; your relay's memory footprint doesn't grow with
+  your users' chat, activity, or audit history.
+- **Real-time by default** — GunDB gives you live sync across clients
+  without writing your own WebSocket protocol.
+- **No egress fees on cold storage** — R2 charges nothing to read data
+  back out (unlike S3), so history reads stay cheap even at scale.
+- **Database freedom** — start on MongoDB, move to Postgres later, or use
+  Cloudflare D1 if you're already all-in on Cloudflare. One config value,
+  not a rewrite.
+- **Direct-to-storage file uploads** — presigned multipart URLs mean your
+  server never proxies file bytes, so uploads don't compete with your
+  app's RAM or bandwidth.
+- **No dead weight** — only the database driver you actually chose is
+  ever loaded into memory; the other three aren't required dependencies.
+- **Runs anywhere** — plain Node.js 18+, no framework lock-in. The only
+  Cloudflare-specific piece (the D1 proxy Worker) is entirely optional,
+  needed only if you pick D1.
+- **Open source, self-hosted** — no vendor SaaS lock-in. You own the
+  relay, the bucket, and the database.
 
 ## Quick start
 
@@ -119,6 +200,90 @@ unless the room just crossed `room.hotWindow`).
 > `roomId` for a `feedId`, `deviceId`, `documentId`, or `channelId`, and
 > `text`/`userId` for whatever fields your event needs. The archiver only
 > cares about the `ts` field and the Gun path convention above.
+
+## Examples & Recipes
+
+The concept above is generic; here's what it looks like copied into
+different use cases. The flow is always the same:
+
+```
+Concept  →  Copy an example below  →  Change the ID + fields  →  Works
+```
+
+Each of these also has a minimal runnable file under
+[`examples/`](./examples) — `examples/<name>/snippet.js`.
+
+**1. Basic chat** — [`examples/chat-app`](./examples/chat-app)
+```js
+gun.get(`room:${roomId}`).get('messages').get(messageId).put({
+  ts: Date.now(),
+  userId,
+  text,
+});
+
+await mesh.archiveRoomIfNeeded(roomId);
+const messages = await mesh.getHistory(roomId, { limit: 50 });
+```
+
+**2. Community / public channel** — [`examples/community-chat`](./examples/community-chat)
+```js
+const channelId = 'programming';
+
+await mesh.archiveRoomIfNeeded(channelId);
+const events = await mesh.getHistory(channelId, { limit: 100 });
+```
+
+**3. Activity feed** — [`examples/activity-feed`](./examples/activity-feed)
+```js
+const feedId = `user:${userId}:activity`;
+
+gun.get(`room:${feedId}`).get('messages').get(eventId).put({
+  ts: Date.now(),
+  type: 'followed_user',
+  targetId,
+});
+
+await mesh.archiveRoomIfNeeded(feedId);
+const activity = await mesh.getHistory(feedId, { limit: 50 });
+```
+
+**4. IoT event stream** — [`examples/iot-events`](./examples/iot-events)
+```js
+const deviceId = `device:${sensorId}`;
+
+gun.get(`room:${deviceId}`).get('messages').get(eventId).put({
+  ts: Date.now(),
+  temperature,
+  humidity,
+  voltage,
+});
+
+await mesh.archiveRoomIfNeeded(deviceId);
+```
+
+**5. Audit log** — [`examples/audit-log`](./examples/audit-log)
+```js
+const auditId = `audit:${organizationId}`;
+
+gun.get(`room:${auditId}`).get('messages').get(eventId).put({
+  ts: Date.now(),
+  actorId,
+  action: 'file.deleted',
+  targetId: fileId,
+});
+
+await mesh.archiveRoomIfNeeded(auditId);
+```
+
+Also scaffolded, following the same pattern: [`examples/notifications`](./examples/notifications),
+[`examples/collaborative-app`](./examples/collaborative-app),
+[`examples/public-chat`](./examples/public-chat), and
+[`examples/file-sharing`](./examples/file-sharing) (upload flow only, no
+Gun events involved).
+
+None of these are full production apps — each is a minimal, runnable
+file showing the specific pattern, meant to be copied into your own
+project and adapted.
 
 ## Core API
 

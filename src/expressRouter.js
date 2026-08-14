@@ -7,18 +7,58 @@
  * any framework (Fastify, Koa, a raw http server, etc). This is a
  * convenience wrapper for people already using Express.
  *
+ * SECURITY: this router has no built-in concept of users or permissions
+ * (see README.md → Security). Pass `middleware` to apply your own
+ * authentication/authorization in front of every route it defines — for
+ * per-resource checks (e.g. "does this user own this fileId/roomId?"),
+ * write your own routes calling the SyncMesh methods directly instead of
+ * using this router at all; see README.md → Security → "Recommended
+ * request flow" for an example.
+ *
  * Usage:
  *   const { createExpressRouter } = require('syncmesh/express');
- *   app.use(createExpressRouter(mesh));
+ *   app.use(createExpressRouter(mesh, { middleware: [requireAuth] }));
  */
 
 'use strict';
 
+const MAX_HISTORY_LIMIT = 200;
+const DEFAULT_HISTORY_LIMIT = 50;
+
+/**
+ * Clamps a client-supplied "limit" query param to a safe, finite,
+ * positive integer within [0, MAX_HISTORY_LIMIT] — guards against NaN
+ * (e.g. ?limit=abc), negative values, and unbounded values that would
+ * force SyncMesh/R2 to fetch an unreasonable number of archive chunks.
+ * @param {unknown} raw
+ * @returns {number}
+ */
+function clampLimit(raw) {
+  if (raw === undefined) return DEFAULT_HISTORY_LIMIT;
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_HISTORY_LIMIT;
+  return Math.min(Math.max(Math.floor(n), 0), MAX_HISTORY_LIMIT);
+}
+
+/**
+ * Parses a client-supplied "before" query param into a valid timestamp,
+ * falling back to now on anything non-finite (e.g. ?before=abc).
+ * @param {unknown} raw
+ * @returns {number}
+ */
+function parseBefore(raw) {
+  if (raw === undefined) return Date.now();
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : Date.now();
+}
+
 /**
  * @param {import('./index').SyncMesh} mesh - An already-`init()`ed SyncMesh instance.
+ * @param {object} [options]
+ * @param {import('express').RequestHandler[]} [options.middleware] - Applied to every route before it runs, e.g. your own auth check.
  * @returns {import('express').Router}
  */
-function createExpressRouter(mesh) {
+function createExpressRouter(mesh, options = {}) {
   let express;
   try {
     express = require('express');
@@ -26,7 +66,12 @@ function createExpressRouter(mesh) {
     throw new Error('createExpressRouter() needs express installed: npm install express');
   }
 
+  const { middleware = [] } = options;
   const router = express.Router();
+
+  if (middleware.length) {
+    router.use(...middleware);
+  }
 
   router.post('/start-upload', async (req, res) => {
     try {
@@ -81,8 +126,8 @@ function createExpressRouter(mesh) {
 
   router.get('/chat/:roomId/history', async (req, res) => {
     try {
-      const before = req.query.before ? Number(req.query.before) : Date.now();
-      const limit = req.query.limit ? Number(req.query.limit) : 50;
+      const before = parseBefore(req.query.before);
+      const limit = clampLimit(req.query.limit);
       const messages = await mesh.getHistory(req.params.roomId, { before, limit });
       res.status(200).json({ roomId: req.params.roomId, messages });
     } catch (error) {

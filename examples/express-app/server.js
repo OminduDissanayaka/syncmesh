@@ -18,7 +18,22 @@ const { SyncMesh } = require('syncmesh');
 const { createExpressRouter } = require('syncmesh/express');
 
 const app = express();
-app.use(cors({ exposedHeaders: ['ETag'] }));
+
+// SECURITY: this default is intentionally restrictive. An unauthenticated
+// wildcard CORS origin on upload/history endpoints is a common way an
+// "example" gets copy-pasted straight into production. Set CORS_ORIGIN to
+// your actual frontend's origin(s); requests from anywhere else are
+// rejected. See README.md → Security.
+const allowedOrigins = (process.env.CORS_ORIGIN || '').split(',').map((s) => s.trim()).filter(Boolean);
+if (allowedOrigins.length === 0) {
+  console.warn('⚠ CORS_ORIGIN is not set — all cross-origin requests will be blocked by default.');
+}
+app.use(
+  cors({
+    origin: allowedOrigins,
+    exposedHeaders: ['ETag'],
+  })
+);
 app.use(express.json());
 
 const mesh = new SyncMesh({
@@ -39,12 +54,27 @@ const mesh = new SyncMesh({
 async function start() {
   await mesh.init();
 
+  // SECURITY: this router has NO built-in auth. requireAuth below is a
+  // stub — replace it with real session/JWT verification before this
+  // touches production. See README.md → Security → "Recommended request
+  // flow" for what a real implementation (auth → authorization → upload
+  // limits → SyncMesh) should look like; this example only wires the
+  // hook point, not the actual checks.
+  function requireAuth(req, res, next) {
+    if (!process.env.SKIP_AUTH_FOR_LOCAL_DEV) {
+      return res.status(501).json({
+        error: 'requireAuth is a stub in this example — implement real auth before deploying.',
+      });
+    }
+    next();
+  }
+
   // Mounts:
   //   POST /start-upload, /get-upload-urls, /complete-upload, /abort-upload
   //   GET  /file/:fileId
   //   GET  /chat/:roomId/history
   //   POST /chat/:roomId/archive-check
-  app.use(createExpressRouter(mesh));
+  app.use(createExpressRouter(mesh, { middleware: [requireAuth] }));
 
   app.get('/ping', (_req, res) => res.status(200).send('Pong!'));
 

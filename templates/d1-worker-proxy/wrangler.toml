@@ -1,0 +1,14 @@
+name = "syncmesh-d1-proxy"
+main = "src/index.js"
+compatibility_date = "2026-08-01"
+
+# Bind your D1 database here. Get <your-d1-database-id> via:
+#   npx wrangler d1 list
+[[d1_databases]]
+binding = "DB"
+database_name = "syncmesh-db"
+database_id = "<your-d1-database-id>"
+
+# Set the shared secret with:
+#   npx wrangler secret put D1_PROXY_TOKEN
+# Then use the SAME value as db.proxyToken in your SyncMesh config.

@@ -154,14 +154,23 @@ class SyncMesh {
    * @returns {Promise<Array<object>>}
    */
   async getHistory(roomId, { before = Date.now(), limit = 50 } = {}) {
-    const hot = (await this._readRoomMessages(roomId)).filter((m) => m.ts < before);
+    const safeBefore = Number.isFinite(before) ? before : Date.now();
+    // Number.isFinite(limit) rejects NaN and Infinity; limit <= 0 (including
+    // -0, which arr.slice(-0) treats as arr.slice(0) — the WHOLE array,
+    // not an empty one) is clamped to 0 explicitly so `{ limit: 0 }` really
+    // does return nothing.
+    const safeLimit = Number.isFinite(limit) && limit > 0 ? Math.floor(limit) : 0;
 
-    if (hot.length >= limit) {
-      return hot.slice(-limit);
+    if (safeLimit === 0) return [];
+
+    const hot = (await this._readRoomMessages(roomId)).filter((m) => m.ts < safeBefore);
+
+    if (hot.length >= safeLimit) {
+      return hot.slice(-safeLimit);
     }
 
-    const remaining = limit - hot.length;
-    const chunkRows = await this.db.getChunksForRoom(roomId, before, 5);
+    const remaining = safeLimit - hot.length;
+    const chunkRows = await this.db.getChunksForRoom(roomId, safeBefore, 5);
 
     const archivedMessages = [];
     for (const row of chunkRows) {

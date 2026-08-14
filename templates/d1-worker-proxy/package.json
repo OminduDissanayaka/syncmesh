@@ -1,0 +1,16 @@
+{
+  "name": "syncmesh-d1-proxy",
+  "version": "1.0.0",
+  "description": "Cloudflare Worker exposing D1 over a trusted HTTP API for SyncMesh's D1Adapter.",
+  "main": "src/index.js",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "db:init": "wrangler d1 execute syncmesh-db --file=./schema.sql"
+  },
+  "devDependencies": {
+    "wrangler": "^3.78.0"
+  },
+  "author": "Omindu Dissanayaka (https://github.com/OminduDissanayaka)",
+  "license": "MIT"
+}

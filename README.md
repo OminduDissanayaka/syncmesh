@@ -317,17 +317,26 @@ library and `syncmesh-relay` don't depend on it at all, so
 
 ```js
 const { createExpressRouter } = require('syncmesh/express');
-app.use(createExpressRouter(mesh));
+app.use(createExpressRouter(mesh, { middleware: [requireAuth] }));
 ```
 
 Mounts: `POST /start-upload`, `POST /get-upload-urls`,
 `POST /complete-upload`, `POST /abort-upload`, `GET /file/:fileId`,
 `GET /chat/:roomId/history`, `POST /chat/:roomId/archive-check`.
 
+`middleware` is applied in front of **every** route this returns —
+useful for a blanket "must be logged in" check, but it's the same
+middleware for all of them. It does **not** give you per-resource checks
+(e.g. "does this user own this `fileId`?", "is this user in this
+`roomId`?") — those still need their own route, see
+[Security → Recommended request flow](#security).
+
 Not using Express? Call the `SyncMesh` methods directly from Fastify,
 Koa, or a raw HTTP server — the router is just a thin convenience layer.
 
-See a full working example in [`examples/express-app`](./examples/express-app).
+See a full working example in [`examples/express-app`](./examples/express-app)
+— it wires in a `requireAuth` stub and a locked-down `CORS_ORIGIN`
+default specifically so it isn't copy-pasted into production as-is.
 
 ## Choosing a metadata database
 
@@ -493,10 +502,12 @@ Upload limits      — file type allowlist, size cap, rate limiting
 SyncMesh           — startUpload / getUploadUrls / getHistory / getFile / ...
 ```
 
-`createExpressRouter()` is a convenience layer for prototyping — it does
-**none** of this. In production, either insert your own middleware in
-front of it, or skip it and write your own thin routes that call
-`SyncMesh` methods directly after your checks:
+`createExpressRouter()` accepts a `middleware` option (see
+[Express integration](#express-integration-optional)) for blanket checks
+like "must be authenticated," but it applies the same middleware to every
+route — it does **not** give you per-resource checks like #6 and #7
+above. For those, skip the convenience router for that route and write
+your own, calling `SyncMesh` methods directly after your checks:
 
 ```js
 app.post('/start-upload', requireAuth, async (req, res) => {

@@ -1,6 +1,6 @@
 {
   "name": "syncmesh",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Real-time GunDB sync + tiered storage: Cloudflare R2 for cold blobs, and your choice of D1 / MongoDB / MySQL / PostgreSQL for the metadata index. Built for chat apps that can't afford unbounded RAM growth.",
   "main": "src/index.js",
   "exports": {

@@ -4,5 +4,5 @@ node_modules/
 !.env.example
 *.log
 .DS_Store
-d1-worker-proxy/
+/d1-worker-proxy/
 .wrangler/

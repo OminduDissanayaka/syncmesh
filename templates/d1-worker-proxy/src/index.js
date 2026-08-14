@@ -12,17 +12,40 @@
  * Security model: designed for a single trusted caller (your app server),
  * authenticated via a shared secret (D1_PROXY_TOKEN). Not meant to be
  * exposed to end users or arbitrary clients.
+ *
+ * NOTE ON RATE LIMITING: this Worker has no built-in brute-force
+ * throttling for D1_PROXY_TOKEN guesses — it relies on Cloudflare's
+ * edge-level DDoS/abuse protections. For a higher-security deployment,
+ * add a Cloudflare Rate Limiting Rule on this route, or a KV-backed
+ * per-IP counter, in front of the token check below.
  */
 
 /**
+ * Timing-safe check of the request's Bearer token against D1_PROXY_TOKEN.
+ *
+ * Follows Cloudflare's documented pattern (see
+ * developers.cloudflare.com/workers/examples/protect-against-timing-attacks):
+ * hash both values to a fixed size first with SHA-256, so a plain ===
+ * (or an early length-mismatch return) never leaks how long the correct
+ * token is or how many leading bytes a guess got right — then compare the
+ * hashes with crypto.subtle.timingSafeEqual, a constant-time comparison
+ * Cloudflare Workers expose as a non-standard Web Crypto extension.
  * @param {Request} request
  * @param {string} expectedToken
- * @returns {boolean}
+ * @returns {Promise<boolean>}
  */
-function isAuthorized(request, expectedToken) {
+async function isAuthorized(request, expectedToken) {
   const header = request.headers.get('Authorization') || '';
   const [scheme, token] = header.split(' ');
-  return scheme === 'Bearer' && token === expectedToken;
+  if (scheme !== 'Bearer' || !token) return false;
+
+  const encoder = new TextEncoder();
+  const [providedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest('SHA-256', encoder.encode(token)),
+    crypto.subtle.digest('SHA-256', encoder.encode(expectedToken)),
+  ]);
+
+  return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
 }
 
 /**
@@ -43,7 +66,7 @@ export default {
    * @param {{ DB: D1Database, D1_PROXY_TOKEN: string }} env
    */
   async fetch(request, env) {
-    if (!isAuthorized(request, env.D1_PROXY_TOKEN)) {
+    if (!(await isAuthorized(request, env.D1_PROXY_TOKEN))) {
       return json({ error: 'Unauthorized' }, 401);
     }
 

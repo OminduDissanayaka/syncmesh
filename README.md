@@ -370,6 +370,14 @@ Then configure SyncMesh with:
 db: { provider: 'd1', proxyUrl: 'https://syncmesh-d1-proxy.<subdomain>.workers.dev', proxyToken: '<same secret>' }
 ```
 
+The proxy Worker checks `D1_PROXY_TOKEN` with a constant-time comparison
+(hash both values, then `crypto.subtle.timingSafeEqual`) to avoid leaking
+the secret through response-timing differences. It does **not** rate-limit
+token guesses itself — that relies on Cloudflare's edge-level protections.
+For a higher-security deployment, add a
+[Cloudflare Rate Limiting Rule](https://developers.cloudflare.com/waf/rate-limiting-rules/)
+on the Worker's route.
+
 Every other provider connects straight from your app with no extra
 service required.
 
@@ -538,6 +546,13 @@ app.post('/start-upload', requireAuth, async (req, res) => {
   800ms settle delay after `.map().once()`, not a guarantee every peer
   has responded — acceptable for archival (worst case: a message archives
   one cycle later), but tune it against your own peer latency if needed.
+- **Dependency major-version policy**: `express` (`^4.x`), `mongodb`
+  (`^6.x`), and `wrangler` (`^3.x`, in the D1 proxy template) are pinned
+  one major version behind their current latest (`5.x`, `7.x`, `4.x`
+  respectively) on purpose — those are breaking-change bumps this
+  project hasn't been tested against yet. `@aws-sdk/*`, `gun`, `mysql2`,
+  and `pg` floors are kept current within their existing major. If you
+  need the newer majors, test them yourself before overriding the range.
 
 ## License
 

@@ -1,6 +1,6 @@
 {
   "name": "syncmesh",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Real-time GunDB sync + tiered storage: Cloudflare R2 for cold blobs, and your choice of D1 / MongoDB / MySQL / PostgreSQL for the metadata index. Built for chat apps that can't afford unbounded RAM growth.",
   "main": "src/index.js",
   "exports": {
@@ -52,14 +52,14 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@aws-sdk/client-s3": "^3.637.0",
-    "@aws-sdk/s3-request-presigner": "^3.637.0",
-    "gun": "^0.2020.1239"
+    "@aws-sdk/client-s3": "^3.1110.0",
+    "@aws-sdk/s3-request-presigner": "^3.1110.0",
+    "gun": "^0.2020.1241"
   },
   "optionalDependencies": {
     "express": "^4.19.2",
     "mongodb": "^6.8.0",
-    "mysql2": "^3.11.0",
-    "pg": "^8.12.0"
+    "mysql2": "^3.23.3",
+    "pg": "^8.23.0"
   }
 }
